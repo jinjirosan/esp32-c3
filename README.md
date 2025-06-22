@@ -63,9 +63,13 @@ After powering on:
 ## Display Layout
 
 Line 1: Ray v1.4.3
+
 Line 2: Uptime: 3m
+
 Line 3: █ ██ ░░ █ ← status stripes (filled or outlined boxes)
+
 Line 4: 192.168.4.1 OR "offline"
+
 
 
 ---
