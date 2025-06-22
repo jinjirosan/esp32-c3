@@ -1,0 +1,205 @@
+#include <WiFi.h>
+#include <WebServer.h>
+#include <Update.h>
+#include <U8g2lib.h>
+
+// ===== OLED PINS =====
+#define OLED_RESET U8X8_PIN_NONE
+#define OLED_SDA 5
+#define OLED_SCL 6
+
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, OLED_RESET, OLED_SCL, OLED_SDA);
+
+// ===== Variables =====
+const char* deviceName = "Ray";
+const char* softwareVersion = "v1.4.3";
+
+// ===== Access Point Credentials =====
+String ssid = String("ESP32-C3-") + deviceName;
+const char* password = "12345678";
+
+// ===== Web Server and Auth =====
+WebServer server(80);
+const char* http_username = "admin";
+const char* http_password = "12345678";
+
+// ===== Uptime Tracker =====
+unsigned long secondsUptime = 0;
+unsigned long lastUptimeUpdate = 0;
+IPAddress localIP;
+
+// ===== Display Layout Offsets =====
+int xOffset = 30;
+int yOffset = 30;
+
+// ===== LED (Client Presence Indicator) =====
+const int LED_PIN = 8;
+
+// ===== Stripe Status =====
+bool statusStripes[5] = {true, true, false, false, true}; // toggle as needed
+
+// ===== Format uptime for display =====
+String formatUptime(unsigned long seconds) {
+  if (seconds < 60) return "Uptime: " + String(seconds) + "s";
+  else if (seconds < 3600) return "Uptime: " + String((seconds + 59) / 60) + "m";
+  else if (seconds < 86400) return "Uptime: " + String((seconds + 3599) / 3600) + "h";
+  else return "Uptime: " + String((seconds + 86399) / 86400) + "d";
+}
+
+// ===== OLED Drawing =====
+void drawOLED(unsigned long uptimeSeconds, const String& ipText, bool webReady) {
+  u8g2.clearBuffer();
+  u8g2.setDrawColor(0);
+  u8g2.drawBox(0, 0, 128, 64);  // Clear screen
+  u8g2.setDrawColor(1);
+  u8g2.setFont(u8g2_font_5x7_tr);
+
+  // Line 1: Device name + Version
+  u8g2.drawStr(xOffset, yOffset + 0, deviceName);
+  int16_t versionWidth = u8g2.getStrWidth(softwareVersion);
+  u8g2.drawStr(100 - versionWidth - 1, yOffset + 0, softwareVersion);
+
+  // Line 2: Uptime
+  String uptimeStr = formatUptime(uptimeSeconds);
+  u8g2.drawStr(xOffset, yOffset + 10, uptimeStr.c_str());
+
+  // Line 3: IP or Offline
+  String ipLine = webReady ? ipText : "offline";
+  u8g2.drawStr(xOffset, yOffset + 20, ipLine.c_str());
+
+  // Line 4: Status stripes
+  int stripeWidth = 8;
+  int stripeGap = 6;
+  int startX = xOffset;
+  int stripeY = yOffset + 29;
+  for (int i = 0; i < 5; i++) {
+    int x = startX + i * (stripeWidth + stripeGap);
+    if (statusStripes[i]) {
+      u8g2.drawBox(x, stripeY, stripeWidth, 5);
+    } else {
+      u8g2.drawFrame(x, stripeY, stripeWidth, 5);
+    }
+  }
+
+  u8g2.sendBuffer();
+}
+
+// ===== Handlers with Auth =====
+bool checkAuth() {
+  return server.authenticate(http_username, http_password);
+}
+
+void handleRoot() {
+  if (!checkAuth()) return server.requestAuthentication();
+
+  String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>";
+  html += deviceName;
+  html += "</title></head><body>";
+  html += "<h1>" + String(deviceName) + "</h1>";
+  html += "<p><strong>Software Version:</strong> " + String(softwareVersion) + "</p>";
+  html += "<p>ESP32-C3 running in Access Point mode.</p>";
+  html += "<p><strong>Uptime:</strong> " + formatUptime(secondsUptime) + "</p>";
+  html += "<p><strong>IP Address:</strong> " + localIP.toString() + "</p>";
+  html += "<p><strong>Connected Clients:</strong> " + String(WiFi.softAPgetStationNum()) + "</p>";
+  html += "<hr><p>Chip Revision: " + String(ESP.getChipRevision()) + "</p>";
+  html += "<p>Flash Size: " + String(ESP.getFlashChipSize() / 1024) + " KB</p>";
+  html += "<p>Free Heap: " + String(ESP.getFreeHeap() / 1024) + " KB</p>";
+  html += "<hr><p><a href='/update'>OTA Update</a> | <a href='/config'>Config</a></p>";
+  html += "</body></html>";
+
+  server.send(200, "text/html", html);
+}
+
+void handleConfig() {
+  if (!checkAuth()) return server.requestAuthentication();
+  server.send(200, "text/html", "<h1>Config Page</h1><p>Coming soon...</p>");
+}
+
+// ===== OTA Update Handlers =====
+void handleUpdateForm() {
+  if (!checkAuth()) return server.requestAuthentication();
+
+  String html = "<form method='POST' action='/update' enctype='multipart/form-data'>";
+  html += "<input type='file' name='update'><input type='submit' value='Update'></form>";
+  html += "<p><a href='/'>Back</a></p>";
+  server.send(200, "text/html", html);
+}
+
+void handleUpdateUpload() {
+  HTTPUpload& upload = server.upload();
+
+  if (upload.status == UPLOAD_FILE_START) {
+    Serial.printf("OTA Start: %s\n", upload.filename.c_str());
+    if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+      Update.printError(Serial);
+    }
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+      Update.printError(Serial);
+    }
+  } else if (upload.status == UPLOAD_FILE_END) {
+    if (Update.end(true)) {
+      Serial.println("OTA Success");
+    } else {
+      Update.printError(Serial);
+    }
+  }
+}
+
+// ===== Setup =====
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+
+  u8g2.begin();
+  u8g2.setContrast(255);
+  u8g2.setBusClock(400000);
+
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(ssid.c_str(), password);
+  delay(100);
+
+  localIP = WiFi.softAPIP();
+  Serial.print("Access Point IP: ");
+  Serial.println(localIP);
+  Serial.print("SSID: ");
+  Serial.println(ssid);
+
+  server.on("/", handleRoot);
+  server.on("/config", handleConfig);
+  server.on("/update", HTTP_GET, handleUpdateForm);
+  server.on("/update", HTTP_POST, []() {
+    server.sendHeader("Connection", "close");
+    server.send(200, "text/plain", (Update.hasError()) ? "Update Failed!" : "Update Success. Rebooting...");
+    delay(1000);
+    ESP.restart();
+  }, handleUpdateUpload);
+
+  server.begin();
+
+  drawOLED(secondsUptime, localIP.toString(), true);
+}
+
+// ===== Main Loop =====
+void loop() {
+  server.handleClient();
+
+  unsigned long now = millis();
+  if (now - lastUptimeUpdate >= 1000) {
+    secondsUptime++;
+    lastUptimeUpdate = now;
+
+    if (secondsUptime >= 3) {
+      int clientCount = WiFi.softAPgetStationNum();
+      digitalWrite(LED_PIN, clientCount > 0 ? LOW : HIGH);
+    } else {
+      digitalWrite(LED_PIN, HIGH);
+    }
+
+    bool webReady = WiFi.getMode() == WIFI_AP;
+    drawOLED(secondsUptime, localIP.toString(), webReady);
+  }
+}
