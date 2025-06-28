@@ -48,10 +48,38 @@ The Environmental Guardian Station is a portable, self-contained environmental m
 - **Primary WiFi**: ESP32-C3 built-in 802.11b/g/n
 - **Mesh Network**: ESP-NOW protocol for device-to-device communication
 - **Long Range**: RFM95W LoRa module (868/915MHz)
-- **Local Display**: 1.3" OLED SH1106 128x64 (I2C)
+- **Display System**: Dual display configuration for comprehensive data visualization
+  - **Primary Display**: 1.3" OLED SH1106 128x64 (I2C: 0x3C)
+  - **Secondary Display**: 2.9" eINK display (SPI) for always-visible status
+  - **Optional**: Additional 0.96" OLED (I2C: 0x3D) via I2C multiplexer
 - **Status Indicators**: WS2812B RGB LED strip (8 LEDs)
 
-#### 2.1.4 Power Management System
+#### 2.1.4 Enhanced Display Configuration
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    DISPLAY ARCHITECTURE                     │
+├─────────────────────────────────────────────────────────────┤
+│ Primary I2C Bus (GPIO 5/6):                                │
+│ • Environmental sensors (BME680, SCD40, etc.)              │
+│ • TCA9548A I2C Multiplexer (0x70)                          │
+│   ├── Channel 0: Primary OLED SH1106 (0x3C)               │
+│   ├── Channel 1: Secondary OLED SSD1306 (0x3C)            │
+│   └── Channel 2-7: Future expansion                        │
+│                                                             │
+│ SPI Bus (GPIO 2,3,4,6,7,10):                              │
+│ • 2.9" eINK Display (Waveshare/Good Display)               │
+│   ├── MOSI: GPIO 7                                         │
+│   ├── MISO: GPIO 2                                         │
+│   ├── SCK: GPIO 6 (shared with I2C)                        │
+│   ├── CS: GPIO 10                                          │
+│   ├── DC: GPIO 3                                           │
+│   └── RST: GPIO 4                                          │
+│                                                             │
+│ Status LEDs: WS2812B on GPIO 1 (8 LEDs)                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### 2.1.5 Power Management System
 ```
 Solar Panel (6V, 2W) → BQ24295 Charge Controller → 18650 Li-ion (3400mAh)
                                 ↓
@@ -128,17 +156,56 @@ Quality Check → Filtering → Alerts → Cloud Sync → Mobile App
 
 ### 3.2 User Interface Requirements
 
-#### 3.2.1 OLED Display (FR-005)
-- **Requirement**: Local display shall show current status and trends
+#### 3.2.1 Primary OLED Display (FR-005)
+- **Requirement**: Primary display shall show real-time environmental data and system status
+- **Specifications**: 1.3" SH1106 OLED, 128x64 pixels, I2C interface
 - **Display Modes**: 
-  - Overview: All parameters summary
-  - Detail: Individual parameter with 24h graph
+  - Overview: Current readings from all sensors
+  - Trends: 24-hour mini-graphs for key parameters
   - Network: Mesh network status and connected devices
-  - Settings: Configuration menu
+  - Alerts: Warning and critical status indicators
 - **Update Rate**: 5-second refresh for current values
 - **Navigation**: Rotary encoder with push button
+- **Power Consumption**: 20mA active, 10µA sleep
 
-#### 3.2.2 Web Interface (FR-006)
+#### 3.2.2 Secondary eINK Display (FR-005A)
+- **Requirement**: Always-visible status display for critical environmental metrics
+- **Specifications**: 2.9" eINK display, 296x128 pixels, SPI interface
+- **Display Content**:
+  - Current temperature, humidity, and air quality index
+  - Weather forecast (6-hour prediction)
+  - System status (battery level, connectivity)
+  - Last update timestamp
+- **Update Rate**: 15-minute refresh (configurable: 5-60 minutes)
+- **Visibility**: Excellent outdoor readability, 180° viewing angle
+- **Power Consumption**: 0µA between updates, 45mA during 2-second refresh
+- **Retention**: Image persists without power for months
+
+#### 3.2.3 Optional Third Display (FR-005B)
+- **Requirement**: Additional OLED for detailed parameter monitoring
+- **Specifications**: 0.96" SSD1306 OLED, 128x64 pixels, I2C via multiplexer
+- **Display Content**:
+  - Detailed gas sensor readings (CO2, TVOC, gas concentrations)
+  - Particulate matter levels (PM1.0, PM2.5, PM10)
+  - UV index and light levels
+  - Power system metrics
+- **Update Rate**: 10-second refresh
+- **Use Case**: Laboratory or research applications requiring detailed monitoring
+
+#### 3.2.4 Display Management System (FR-005C)
+- **Requirement**: Intelligent display management for optimal power and visibility
+- **Features**:
+  - Automatic brightness adjustment based on ambient light
+  - Sleep mode scheduling (OLED displays only)
+  - Priority-based content switching during alerts
+  - Display rotation for optimal viewing angles
+- **Power Optimization**:
+  - OLED sleep mode during low activity periods
+  - eINK update frequency based on data change rate
+  - Backlight dimming schedule
+- **Content Synchronization**: Coordinated updates across all displays
+
+#### 3.2.5 Web Interface (FR-006)
 - **Requirement**: Web-based dashboard for remote monitoring
 - **Features**: 
   - Real-time data visualization
@@ -149,7 +216,7 @@ Quality Check → Filtering → Alerts → Cloud Sync → Mobile App
 - **Compatibility**: Modern browsers (Chrome 90+, Firefox 88+, Safari 14+)
 - **Responsive Design**: Mobile-first approach
 
-#### 3.2.3 Mobile Application (FR-007)
+#### 3.2.6 Mobile Application (FR-007)
 - **Requirement**: Native mobile app for iOS/Android
 - **Features**:
   - Push notifications for alerts
@@ -248,13 +315,66 @@ Quality Check → Filtering → Alerts → Cloud Sync → Mobile App
 - **Mounting**: Wall mount, pole mount, desktop stand
 - **Material**: UV-resistant ABS plastic
 
-#### 5.1.2 Electrical Specifications
+#### 5.1.2 Enhanced Display System Specifications
+```
+Primary OLED Display (SH1106):
+• Size: 1.3" diagonal, 128x64 pixels
+• Interface: I2C (0x3C), 400kHz bus speed
+• Power: 20mA active, 10µA sleep
+• Viewing angle: 160° horizontal, 160° vertical
+• Contrast ratio: 10,000:1
+• Operating temp: -40°C to +85°C
+
+Secondary eINK Display (2.9"):
+• Size: 2.9" diagonal, 296x128 pixels
+• Interface: SPI, 4MHz bus speed
+• Power: 45mA refresh (2s), 0µA standby
+• Viewing angle: 180° (paper-like)
+• Contrast ratio: 7:1 (black/white)
+• Refresh time: 2 seconds full update
+• Operating temp: 0°C to +50°C
+
+Optional Third OLED (SSD1306):
+• Size: 0.96" diagonal, 128x64 pixels
+• Interface: I2C via TCA9548A multiplexer
+• Power: 15mA active, 8µA sleep
+• Same environmental specs as primary OLED
+
+I2C Multiplexer (TCA9548A):
+• 8-channel I2C switch
+• Power: 3mA active, 1µA standby
+• Voltage: 1.65V to 5.5V operation
+• Frequency: Up to 400kHz per channel
+```
+
+#### 5.1.3 Component Cost Analysis (qty 100+)
+```
+Display System Components:
+• Primary OLED SH1106: $8-12
+• eINK 2.9" display: $15-25
+• Optional OLED SSD1306: $4-8
+• TCA9548A multiplexer: $2-4
+• Connectors & cables: $3-5
+Total Display System: $32-54
+
+Complete System BOM:
+• ESP32-C3 + core components: $15-20
+• Environmental sensors: $45-65
+• Display system: $32-54
+• Power management: $25-35
+• Enclosure & assembly: $20-30
+TOTAL SYSTEM COST: $137-204 per unit
+```
+
+#### 5.1.4 Electrical Specifications
 - **Input Voltage**: 5-12V DC (solar panel input)
 - **Battery**: 18650 Li-ion 3.7V 3400mAh
-- **Power Consumption**: 
-  - Active: 1.2W average
-  - Sleep: 0.05W
-  - Peak: 2.5W (during WiFi transmission)
+- **Power Consumption with Enhanced Displays**: 
+  - Active (all displays on): 1.8W average
+  - Normal operation: 1.4W average (eINK updates every 15min)
+  - Sleep (OLED displays off): 0.08W
+  - Deep sleep: 0.02W
+  - Peak: 3.2W (during WiFi transmission + display updates)
 
 ### 5.2 Software Specifications
 
@@ -264,7 +384,42 @@ Quality Check → Filtering → Alerts → Cloud Sync → Mobile App
 - **Real-Time OS**: FreeRTOS
 - **Memory Management**: Dynamic allocation with leak detection
 
-#### 5.2.2 Machine Learning Specifications
+#### 5.2.2 Display Software Stack
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    DISPLAY SOFTWARE STACK                   │
+├─────────────────────────────────────────────────────────────┤
+│ Application Layer:                                          │
+│ • Display Content Manager    • Alert Visualization         │
+│ • Data Formatter             • User Interface Controller   │
+├─────────────────────────────────────────────────────────────┤
+│ Graphics Layer:                                             │
+│ • U8g2 Library (OLED)        • GxEPD2 Library (eINK)      │
+│ • Custom Fonts & Icons       • Graph Rendering Engine      │
+├─────────────────────────────────────────────────────────────┤
+│ Hardware Abstraction:                                       │
+│ • I2C Bus Manager            • SPI Bus Manager             │
+│ • TCA9548A Multiplexer       • Display Power Control       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### 5.2.3 Display Libraries and Dependencies
+```
+Required Libraries:
+• U8g2 v2.34+ (OLED displays)
+• GxEPD2 v1.5+ (eINK display)
+• TCA9548A library (I2C multiplexer)
+• Adafruit GFX (graphics primitives)
+
+Memory Requirements:
+• OLED frame buffers: 2KB (128x64 x2 displays)
+• eINK frame buffer: 4.7KB (296x128 pixels)
+• Graphics cache: 8KB
+• Font storage: 12KB
+Total display memory: ~27KB
+```
+
+#### 5.2.4 Machine Learning Specifications
 - **Framework**: TensorFlow Lite for Microcontrollers
 - **Model Size**: <100KB per model
 - **Inference Time**: <1 second per prediction
@@ -307,6 +462,29 @@ Quality Check → Filtering → Alerts → Cloud Sync → Mobile App
 - **Communication Testing**: Mesh network with 10 devices
 - **Endurance Testing**: 30-day continuous operation
 - **Environmental Testing**: Full temperature/humidity range
+- **Display System Testing**: Multi-display coordination and power management
+
+#### 7.2.1 Display Integration Testing
+- **Multi-Display Coordination**: Synchronized updates across all displays
+- **I2C Multiplexer Testing**: Channel switching and address conflicts
+- **SPI/I2C Bus Sharing**: GPIO 6 shared between I2C SCL and SPI SCK
+- **Power Management**: Display sleep/wake cycles and power consumption
+- **Content Rendering**: Graphics, fonts, and real-time data visualization
+- **Environmental Stress**: Display performance across temperature range
+
+#### 7.2.2 Display Performance Testing
+- **Refresh Rate Testing**: 
+  - Primary OLED: 5-second update verification
+  - eINK display: 15-minute update reliability
+  - Optional OLED: 10-second update consistency
+- **Power Consumption Validation**:
+  - Measure actual vs. specified power draw
+  - Battery life impact assessment
+  - Sleep mode effectiveness
+- **Visibility Testing**:
+  - Outdoor readability (eINK display)
+  - Viewing angle verification
+  - Brightness adjustment accuracy
 
 ### 7.3 Performance Testing
 - **Load Testing**: 1000 concurrent web requests
